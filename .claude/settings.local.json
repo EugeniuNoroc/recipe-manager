@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer install *)",
+      "Bash(composer config *)",
+      "Bash(php *)",
+      "Bash(openssl s_client -connect repo.packagist.org:443 -showcerts)",
+      "Bash(openssl x509 *)",
+      "Read(//b/php-8.5.3-nts-Win32-vs17-x64/**)",
+      "Bash(curl -s -o \"B:/php-8.5.3-nts-Win32-vs17-x64/cacert.pem\" \"https://curl.se/ca/cacert.pem\")",
+      "Bash(php -S localhost:8000 -t public)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/index.php)",
+      "Bash(curl -s http://localhost:8000/index.php)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/login.php)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/register.php)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8000/view.php?id=1\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/create.php)",
+      "Bash(curl -s \"http://localhost:8000/index.php?category=1&search=каша\")",
+      "Bash(curl -s \"http://localhost:8000/index.php?category=1\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -o /dev/null \"http://localhost:8000/view.php?id=1\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/stats.php)",
+      "Bash(curl -s http://localhost:8000/stats.php)",
+      "Bash(docker start recipe-mysql *)",
+      "Bash(docker exec *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8000/view.php?id=1)",
+      "Bash(docker stop *)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/__TRACKED_VAR__)",
+      "Bash(curl -sv http://localhost:8000/index.php)",
+      "Bash(ls \"B:\\\\\\\\DB\\\\\\\\lab6\\\\\\\\public\\\\\\\\\")",
+      "Bash(pkill -f \"php -S localhost:8000\")",
+      "Bash(kill 1034 1102)",
+      "Bash(curl -s http://localhost:8000/)",
+      "PowerShell(Stop-Process *)",
+      "Bash(docker start *)"
+    ]
+  }
+}

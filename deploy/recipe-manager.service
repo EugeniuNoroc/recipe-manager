@@ -1,0 +1,19 @@
+[Unit]
+Description=Recipe Manager PHP Application
+Documentation=https://github.com/your-repo/lab6
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=lab
+Group=lab
+WorkingDirectory=/home/lab/app
+ExecStart=/usr/bin/php -S 0.0.0.0:8080 -t /home/lab/app/public
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=recipe-manager
+
+[Install]
+WantedBy=multi-user.target
