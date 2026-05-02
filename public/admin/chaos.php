@@ -48,18 +48,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_GET['action'] ?? '';
         switch ($action) {
             case 'disable_redis':
-                ChaosFlags::disableRedis(30);
-                $until = date('H:i:s', time() + 30);
-                $_SESSION['chaos_flash'] = ['type' => 'warning', 'msg' => "Redis отключён до {$until}. Автовосстановление через 30 сек."];
+                ChaosFlags::disableRedis();
+                $_SESSION['chaos_flash'] = ['type' => 'warning', 'msg' => 'Redis отключён. Не забудь нажать «Включить обратно» после демонстрации.'];
                 break;
             case 'enable_redis':
                 ChaosFlags::enableRedis();
                 $_SESSION['chaos_flash'] = ['type' => 'success', 'msg' => 'Redis восстановлен.'];
                 break;
             case 'disable_mysql':
-                ChaosFlags::disableMysql(30);
-                $until = date('H:i:s', time() + 30);
-                $_SESSION['chaos_flash'] = ['type' => 'warning', 'msg' => "MySQL отключён до {$until}. Автовосстановление через 30 сек."];
+                ChaosFlags::disableMysql();
+                $_SESSION['chaos_flash'] = ['type' => 'warning', 'msg' => 'MySQL отключён — сайт в режиме maintenance. Не забудь нажать «Включить обратно» после демонстрации.'];
                 break;
             case 'enable_mysql':
                 ChaosFlags::enableMysql();
@@ -80,14 +78,11 @@ if (!empty($_SESSION['chaos_flash'])) {
 
 $status = ChaosFlags::getStatus();
 
-function statusBadge(bool $disabled, int $secondsLeft): string
+function statusBadge(bool $disabled): string
 {
-    if ($disabled) {
-        return '<span class="badge bg-danger fs-6">🔴 Симуляция падения'
-            . ($secondsLeft > 0 ? " (восстановление через {$secondsLeft} сек)" : '')
-            . '</span>';
-    }
-    return '<span class="badge bg-success fs-6">🟢 Доступен</span>';
+    return $disabled
+        ? '<span class="badge bg-danger fs-6">🔴 Симуляция падения</span>'
+        : '<span class="badge bg-success fs-6">🟢 Доступен</span>';
 }
 
 ?>
@@ -101,9 +96,6 @@ function statusBadge(bool $disabled, int $secondsLeft): string
           href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
           integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
           crossorigin="anonymous">
-    <?php if ($status['redis_disabled'] || $status['mysql_disabled']): ?>
-    <meta http-equiv="refresh" content="5">
-    <?php endif; ?>
 </head>
 <body class="bg-light">
 
@@ -123,7 +115,9 @@ function statusBadge(bool $disabled, int $secondsLeft): string
         <span class="fs-5">⚠️</span>
         <div>
             <strong>Панель симуляции сбоев для демонстрации graceful degradation.</strong><br>
-            Не использовать на продакшне. Все изменения автоматически откатываются через <strong>30 секунд</strong>.
+            Не использовать на продакшне.
+            <strong>Отключение действует до явного включения.</strong>
+            Не забудь нажать «Включить обратно» после демонстрации — иначе сайт останется в degraded-режиме.
         </div>
     </div>
 
@@ -142,27 +136,33 @@ function statusBadge(bool $disabled, int $secondsLeft): string
                 <div class="card-header fw-semibold <?= $status['redis_disabled'] ? 'bg-danger text-white' : 'bg-success text-white' ?>">
                     Redis
                 </div>
-                <div class="card-body">
+                <div class="card-body d-flex flex-column">
                     <div class="mb-3">
-                        <?= statusBadge($status['redis_disabled'], $status['redis_seconds_left']) ?>
+                        <?= statusBadge($status['redis_disabled']) ?>
                     </div>
-                    <p class="text-muted small mb-3">
+                    <p class="text-muted small mb-1">
                         <strong>При отключении деградируют:</strong><br>
                         сессии пользователей, избранное, статистика просмотров, rate limiter
                     </p>
-                    <form method="POST"
-                          action="/admin/chaos.php?action=<?= $status['redis_disabled'] ? 'enable_redis' : 'disable_redis' ?>">
-                        <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken) ?>">
-                        <?php if ($status['redis_disabled']): ?>
-                            <button type="submit" class="btn btn-success w-100">
-                                ✅ Включить обратно сейчас
-                            </button>
-                        <?php else: ?>
-                            <button type="submit" class="btn btn-danger w-100">
-                                🔴 Отключить (на 30 сек)
-                            </button>
-                        <?php endif; ?>
-                    </form>
+                    <p class="text-danger small mb-3">
+                        Отключение действует до явного включения.
+                        Не забудь нажать «Включить обратно».
+                    </p>
+                    <div class="mt-auto">
+                        <form method="POST"
+                              action="/admin/chaos.php?action=<?= $status['redis_disabled'] ? 'enable_redis' : 'disable_redis' ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken) ?>">
+                            <?php if ($status['redis_disabled']): ?>
+                                <button type="submit" class="btn btn-success w-100">
+                                    ✅ Включить обратно
+                                </button>
+                            <?php else: ?>
+                                <button type="submit" class="btn btn-danger w-100">
+                                    🔴 Отключить
+                                </button>
+                            <?php endif; ?>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
@@ -173,36 +173,39 @@ function statusBadge(bool $disabled, int $secondsLeft): string
                 <div class="card-header fw-semibold <?= $status['mysql_disabled'] ? 'bg-danger text-white' : 'bg-success text-white' ?>">
                     MySQL
                 </div>
-                <div class="card-body">
+                <div class="card-body d-flex flex-column">
                     <div class="mb-3">
-                        <?= statusBadge($status['mysql_disabled'], $status['mysql_seconds_left']) ?>
+                        <?= statusBadge($status['mysql_disabled']) ?>
                     </div>
-                    <p class="text-muted small mb-3">
+                    <p class="text-muted small mb-1">
                         <strong>При отключении:</strong><br>
-                        весь сайт переходит в режим maintenance (HTTP 503), автовозврат через 30 сек
+                        весь сайт переходит в режим maintenance (HTTP 503)
                     </p>
-                    <form method="POST"
-                          action="/admin/chaos.php?action=<?= $status['mysql_disabled'] ? 'enable_mysql' : 'disable_mysql' ?>">
-                        <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken) ?>">
-                        <?php if ($status['mysql_disabled']): ?>
-                            <button type="submit" class="btn btn-success w-100">
-                                ✅ Включить обратно сейчас
-                            </button>
-                        <?php else: ?>
-                            <button type="submit" class="btn btn-danger w-100">
-                                🔴 Отключить (на 30 сек)
-                            </button>
-                        <?php endif; ?>
-                    </form>
+                    <p class="text-danger small mb-3">
+                        Отключение действует до явного включения.
+                        Не забудь нажать «Включить обратно».
+                    </p>
+                    <div class="mt-auto">
+                        <form method="POST"
+                              action="/admin/chaos.php?action=<?= $status['mysql_disabled'] ? 'enable_mysql' : 'disable_mysql' ?>">
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken) ?>">
+                            <?php if ($status['mysql_disabled']): ?>
+                                <button type="submit" class="btn btn-success w-100">
+                                    ✅ Включить обратно
+                                </button>
+                            <?php else: ?>
+                                <button type="submit" class="btn btn-danger w-100">
+                                    🔴 Отключить
+                                </button>
+                            <?php endif; ?>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
 
     </div><!-- /row -->
 
-    <div class="text-muted small text-center mt-4">
-        Статус обновляется автоматически каждые 5 сек пока что-то отключено.
-    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"

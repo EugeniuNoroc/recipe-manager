@@ -77,8 +77,13 @@ try {
 try {
     $pdo = MySQLConnection::getInstance($config['mysql']);
 } catch (\PDOException $e) {
-    $appEnv = $config['app']['env'];
-    $status = ChaosFlags::getStatus();
+    $appEnv        = $config['app']['env'];
+    $status        = ChaosFlags::getStatus();
+    $adminLoggedIn = $appEnv === 'demo'
+        && isset($_SESSION['chaos_admin'])
+        && $_SESSION['chaos_admin'] === true
+        && isset($_SESSION['chaos_admin_time'])
+        && (time() - (int) $_SESSION['chaos_admin_time']) < 3600;
     http_response_code(503);
     require __DIR__ . '/templates/maintenance.php';
     exit;

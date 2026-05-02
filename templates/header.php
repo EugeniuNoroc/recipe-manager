@@ -9,17 +9,28 @@ $pageTitle   = $pageTitle   ?? 'Recipe Manager';
 $currentUser = $currentUser ?? null;
 $flashes     = Flash::all();
 
-// Check Redis availability at render time, not just at bootstrap time.
-// SafeRedis tracks whether the connection is still live after startup.
+// Check Redis availability at render time (SafeRedis tracks live connection state).
 $redisAvailable = isset($redis) && $redis instanceof \App\Database\SafeRedis
     ? $redis->isAvailable()
     : false;
 
-// Chaos indicators (only meaningful in demo mode)
-$appEnv        = $_ENV['APP_ENV'] ?? 'dev';
-$chaosStatus   = ($appEnv === 'demo') ? ChaosFlags::getStatus() : [];
-$redisChaosBanned  = $chaosStatus['redis_disabled']     ?? false;
-$redisChaosLeft    = (int) ($chaosStatus['redis_seconds_left'] ?? 0);
+// Chaos state — only computed in demo mode (file read; safe even when Redis is "down")
+$appEnv      = $_ENV['APP_ENV'] ?? 'dev';
+$chaosStatus = ($appEnv === 'demo') ? ChaosFlags::getStatus() : [];
+$chaosRedis  = $chaosStatus['redis_disabled'] ?? false;
+$chaosMySQL  = $chaosStatus['mysql_disabled'] ?? false;
+$chaosAny    = $chaosRedis || $chaosMySQL;
+
+// Build banner label with correct Russian grammar
+if ($chaosRedis && $chaosMySQL) {
+    $chaosLabel = 'Redis и MySQL отключены';
+} elseif ($chaosRedis) {
+    $chaosLabel = 'Redis отключён';
+} else {
+    $chaosLabel = 'MySQL отключён';
+}
+
+// Admin session check — for the "Включить обратно" button in the chaos banner
 $adminLoggedIn = $appEnv === 'demo'
     && session_status() === PHP_SESSION_ACTIVE
     && isset($_SESSION['chaos_admin'])
@@ -47,16 +58,25 @@ $adminLoggedIn = $appEnv === 'demo'
         textarea { resize: vertical; }
         .views-badge { font-size: .7rem; opacity: .75; }
     </style>
-    <?php if ($redisChaosBanned): ?>
-    <meta http-equiv="refresh" content="5">
+    <?php if ($chaosAny): ?>
+    <meta http-equiv="refresh" content="10">
     <?php endif; ?>
 </head>
 <body class="bg-light">
 
-<?php if ($redisChaosBanned): ?>
-<div class="text-white text-center py-2 small fw-semibold"
-     style="background:#dc3545;letter-spacing:.02em">
-    🔴 ДЕМО: Redis отключён — восстановление через <?= $redisChaosLeft ?> сек
+<?php if ($chaosAny): ?>
+<div style="position:sticky;top:0;z-index:1030;background:#dc3545;color:#fff;
+            padding:10px 16px;display:flex;align-items:center;
+            justify-content:space-between;font-size:1rem;font-weight:600;">
+    <span>⚠️ DEMO MODE: <?= htmlspecialchars($chaosLabel) ?></span>
+    <?php if ($adminLoggedIn): ?>
+        <a href="/admin/chaos.php" class="btn btn-light btn-sm ms-3 fw-semibold">
+            Включить обратно
+        </a>
+    <?php else: ?>
+        <a href="/admin/login.php"
+           class="text-white text-decoration-none small ms-3 opacity-75">admin</a>
+    <?php endif; ?>
 </div>
 <?php endif; ?>
 
@@ -89,12 +109,6 @@ $adminLoggedIn = $appEnv === 'demo'
                 <?php if (!$redisAvailable): ?>
                     <li class="nav-item">
                         <span class="badge bg-warning text-dark">⚠ Redis offline</span>
-                    </li>
-                <?php endif; ?>
-                <?php if ($adminLoggedIn): ?>
-                    <li class="nav-item">
-                        <a class="nav-link py-0 opacity-75" href="/admin/chaos.php"
-                           style="font-size:.78rem">🛠 Chaos Panel</a>
                     </li>
                 <?php endif; ?>
                 <?php if ($currentUser): ?>
