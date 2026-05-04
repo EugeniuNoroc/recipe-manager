@@ -62,12 +62,15 @@ require dirname(__DIR__) . '/templates/header.php';
                         <label class="form-label">Email</label>
                         <input type="email" name="email"
                                class="form-control"
-                               value="<?= htmlspecialchars($email) ?>" required>
+                               value="<?= htmlspecialchars($email) ?>"
+                               required>
+                        <div class="invalid-feedback">Введите корректный email-адрес</div>
                     </div>
 
                     <div class="mb-4">
                         <label class="form-label">Пароль</label>
                         <input type="password" name="password" class="form-control" required>
+                        <div class="invalid-feedback">Введите пароль</div>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Войти</button>

@@ -7,10 +7,23 @@ namespace App\Storage;
 use App\Models\Recipe;
 use PDO;
 
+/**
+ * Реализация StorageInterface для MySQL через PDO.
+ *
+ * Все SELECT-запросы используют BASE_SELECT с JOIN на categories и tags,
+ * возвращая денормализованные данные для Recipe::fromArray().
+ * Теги синхронизируются через таблицу recipe_tags (delete + re-insert).
+ *
+ * @package App\Storage
+ */
 class MySQLRecipeStorage implements StorageInterface
 {
+    /**
+     * @param PDO $pdo Активное PDO-соединение
+     */
     public function __construct(private PDO $pdo) {}
 
+    /** @var string Базовый SELECT с JOIN на категории и теги */
     private const BASE_SELECT = '
         SELECT r.*, c.name AS category,
                GROUP_CONCAT(t.name ORDER BY t.name SEPARATOR \',\') AS tags
@@ -19,6 +32,11 @@ class MySQLRecipeStorage implements StorageInterface
         LEFT JOIN recipe_tags rt ON rt.recipe_id = r.id
         LEFT JOIN tags t ON t.id = rt.tag_id';
 
+    /**
+     * Возвращает все рецепты, отсортированные по updated_at DESC.
+     *
+     * @return Recipe[]
+     */
     public function getAll(): array
     {
         $stmt = $this->pdo->query(
@@ -28,8 +46,13 @@ class MySQLRecipeStorage implements StorageInterface
     }
 
     /**
-     * Filtered list. Both params are optional (zero / empty = no filter).
-     * Combines with AND when both are provided.
+     * Возвращает отфильтрованный список рецептов.
+     *
+     * Оба параметра опциональны; объединяются через AND если оба заданы.
+     *
+     * @param  int     $categoryId ID категории (0 = без фильтра)
+     * @param  string  $search     Поисковая строка (LIKE по title и ingredients)
+     * @return Recipe[]
      */
     public function getFiltered(int $categoryId = 0, string $search = ''): array
     {
@@ -58,6 +81,12 @@ class MySQLRecipeStorage implements StorageInterface
         return array_map(fn($row) => Recipe::fromArray($this->mapRow($row)), $stmt->fetchAll());
     }
 
+    /**
+     * Ищет рецепт по первичному ключу.
+     *
+     * @param  int         $id ID рецепта
+     * @return Recipe|null
+     */
     public function getById(int $id): ?Recipe
     {
         $stmt = $this->pdo->prepare(
@@ -68,7 +97,12 @@ class MySQLRecipeStorage implements StorageInterface
         return $row ? Recipe::fromArray($this->mapRow($row)) : null;
     }
 
-    /** @param int[] $ids */
+    /**
+     * Возвращает рецепты по списку ID в одном MGET-подобном запросе.
+     *
+     * @param  int[]    $ids Массив ID
+     * @return Recipe[]
+     */
     public function findByIds(array $ids): array
     {
         if (empty($ids)) {
@@ -82,6 +116,15 @@ class MySQLRecipeStorage implements StorageInterface
         return array_map(fn($row) => Recipe::fromArray($this->mapRow($row)), $stmt->fetchAll());
     }
 
+    /**
+     * Сохраняет новый рецепт; устанавливает $recipe->id после INSERT.
+     *
+     * Категория разрешается или создаётся через resolveCategoryId().
+     * Теги синхронизируются через syncTags().
+     *
+     * @param  Recipe $recipe
+     * @return bool
+     */
     public function save(Recipe $recipe): bool
     {
         $categoryId = $this->resolveCategoryId($recipe->category);
@@ -104,6 +147,12 @@ class MySQLRecipeStorage implements StorageInterface
         return true;
     }
 
+    /**
+     * Обновляет существующий рецепт (все поля кроме user_id и created_at).
+     *
+     * @param  Recipe $recipe Рецепт с заполненным id
+     * @return bool
+     */
     public function update(Recipe $recipe): bool
     {
         $categoryId = $this->resolveCategoryId($recipe->category);
@@ -124,11 +173,25 @@ class MySQLRecipeStorage implements StorageInterface
         return true;
     }
 
+    /**
+     * Удаляет рецепт по ID. Теги удаляются автоматически через ON DELETE CASCADE.
+     *
+     * @param  int  $id
+     * @return bool
+     */
     public function delete(int $id): bool
     {
         return $this->pdo->prepare('DELETE FROM recipes WHERE id = ?')->execute([$id]);
     }
 
+    /**
+     * Сортирует массив рецептов в памяти.
+     *
+     * @param  Recipe[] $recipes
+     * @param  string   $field   Поле для сортировки
+     * @param  string   $dir     'asc' или 'desc'
+     * @return Recipe[]
+     */
     public function sort(array $recipes, string $field, string $dir): array
     {
         usort($recipes, function (Recipe $a, Recipe $b) use ($field, $dir) {
@@ -140,24 +203,44 @@ class MySQLRecipeStorage implements StorageInterface
         return $recipes;
     }
 
-    /** @return array<array{id:int,name:string}> */
+    /**
+     * Возвращает все категории.
+     *
+     * @return array<array{id:int,name:string}>
+     */
     public function getCategories(): array
     {
         return $this->pdo->query('SELECT id, name FROM categories ORDER BY name')->fetchAll();
     }
 
-    /** @return array<array{id:int,name:string}> */
+    /**
+     * Возвращает все теги.
+     *
+     * @return array<array{id:int,name:string}>
+     */
     public function getTags(): array
     {
         return $this->pdo->query('SELECT id, name FROM tags ORDER BY name')->fetchAll();
     }
 
+    /**
+     * Преобразует строку результата SQL: разбивает GROUP_CONCAT тегов в массив.
+     *
+     * @param  array $row Строка из fetchAll()
+     * @return array      Строка с $row['tags'] как array
+     */
     private function mapRow(array $row): array
     {
         $row['tags'] = $row['tags'] ? explode(',', $row['tags']) : [];
         return $row;
     }
 
+    /**
+     * Возвращает ID категории по имени, создавая её при необходимости.
+     *
+     * @param  string $name Название категории
+     * @return int          ID категории
+     */
     private function resolveCategoryId(string $name): int
     {
         $stmt = $this->pdo->prepare('SELECT id FROM categories WHERE name = ?');
@@ -171,6 +254,14 @@ class MySQLRecipeStorage implements StorageInterface
         return (int) $this->pdo->lastInsertId();
     }
 
+    /**
+     * Синхронизирует теги рецепта: удаляет старые, вставляет новые.
+     *
+     * Теги создаются автоматически если не существуют.
+     *
+     * @param int      $recipeId ID рецепта
+     * @param string[] $tags     Массив названий тегов
+     */
     private function syncTags(int $recipeId, array $tags): void
     {
         $this->pdo->prepare('DELETE FROM recipe_tags WHERE recipe_id = ?')->execute([$recipeId]);

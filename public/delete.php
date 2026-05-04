@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0) {
+    if (!$currentUser->isAdmin() && ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0)) {
         http_response_code(403);
         Flash::error('Доступ запрещён.');
         header('Location: /index.php');
@@ -56,7 +56,7 @@ if (!$recipe) {
     exit;
 }
 
-if ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0) {
+if (!$currentUser->isAdmin() && ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0)) {
     http_response_code(403);
     $pageTitle = 'Доступ запрещён';
     require dirname(__DIR__) . '/templates/header.php';

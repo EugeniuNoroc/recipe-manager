@@ -32,7 +32,9 @@
       "Bash(kill 1034 1102)",
       "Bash(curl -s http://localhost:8000/)",
       "PowerShell(Stop-Process *)",
-      "Bash(docker start *)"
+      "Bash(docker start *)",
+      "PowerShell(Get-ChildItem -Path \"B:\\\\DB\\\\lab6\" -Recurse -Force | Select-Object -Property FullName | Sort-Object FullName | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"B:\\\\DB\\\\lab6\" -Recurse -Force -Exclude \".git\" | Where-Object { $_.FullName -notmatch '\\\\.git' } | Select-Object -Property FullName | Sort-Object FullName | ForEach-Object { $_.FullName })"
     ]
   }
 }

@@ -30,13 +30,8 @@ if ($chaosRedis && $chaosMySQL) {
     $chaosLabel = 'MySQL отключён';
 }
 
-// Admin session check — for the "Включить обратно" button in the chaos banner
-$adminLoggedIn = $appEnv === 'demo'
-    && session_status() === PHP_SESSION_ACTIVE
-    && isset($_SESSION['chaos_admin'])
-    && $_SESSION['chaos_admin'] === true
-    && isset($_SESSION['chaos_admin_time'])
-    && (time() - (int) $_SESSION['chaos_admin_time']) < 3600;
+// Admin check for chaos banner — role-based, no separate session needed
+$adminLoggedIn = ($currentUser !== null && $currentUser->isAdmin());
 ?>
 <!DOCTYPE html>
 <html lang="ru">
@@ -74,7 +69,7 @@ $adminLoggedIn = $appEnv === 'demo'
             Включить обратно
         </a>
     <?php else: ?>
-        <a href="/admin/login.php"
+        <a href="/login.php"
            class="text-white text-decoration-none small ms-3 opacity-75">admin</a>
     <?php endif; ?>
 </div>
@@ -103,6 +98,11 @@ $adminLoggedIn = $appEnv === 'demo'
                     <li class="nav-item">
                         <a class="nav-link" href="/favorites.php">♥ Избранное</a>
                     </li>
+                    <?php if ($currentUser->isAdmin()): ?>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/admin/index.php">⚙️ Админ-панель</a>
+                    </li>
+                    <?php endif; ?>
                 <?php endif; ?>
             </ul>
             <ul class="navbar-nav align-items-center gap-1">

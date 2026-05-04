@@ -12,6 +12,7 @@ use App\Services\RateLimiter;
 use App\Services\SessionStore;
 use App\Services\StatsService;
 use App\Support\Csrf;
+use App\Support\Flash;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -19,14 +20,6 @@ $config = require __DIR__ . '/config/config.php';
 
 // ── ChaosFlags: must init before any service (file-based; survives Redis "outage") ─
 ChaosFlags::init(__DIR__ . '/storage', $config['app']['env']);
-
-// ── Demo mode guard: refuse to start if CHAOS_ADMIN_PASSWORD is too weak ──────────
-if ($config['app']['env'] === 'demo') {
-    $chaosPass = $config['app']['chaos_admin_password'];
-    if ($chaosPass === 'change_me' || strlen($chaosPass) < 12) {
-        die('Refusing to start: configure CHAOS_ADMIN_PASSWORD properly (min 12 chars, must not be "change_me")');
-    }
-}
 
 // ── Trusted host check (warning-only; IP-direct access must keep working) ────
 if ($config['app']['url'] !== '') {
@@ -79,11 +72,7 @@ try {
 } catch (\PDOException $e) {
     $appEnv        = $config['app']['env'];
     $status        = ChaosFlags::getStatus();
-    $adminLoggedIn = $appEnv === 'demo'
-        && isset($_SESSION['chaos_admin'])
-        && $_SESSION['chaos_admin'] === true
-        && isset($_SESSION['chaos_admin_time'])
-        && (time() - (int) $_SESSION['chaos_admin_time']) < 3600;
+    $adminLoggedIn = false;
     http_response_code(503);
     require __DIR__ . '/templates/maintenance.php';
     exit;
@@ -98,3 +87,15 @@ $rateLimiter  = new RateLimiter($redis);
 
 // ── CSRF (Redis-backed; SESSION fallback when Redis is down or goes down) ─────
 Csrf::setRedis($redis);
+
+// ── Blocked user guard ────────────────────────────────────────────────────────
+// Fires on every request where bootstrap.php is loaded.
+// Blocked users are force-logged-out immediately.
+$_bootstrapUser = $auth->currentUser();
+if ($_bootstrapUser !== null && $_bootstrapUser->isBlocked()) {
+    Flash::error('Ваш аккаунт заблокирован.');
+    $auth->logout();
+    header('Location: /login.php');
+    exit;
+}
+unset($_bootstrapUser);

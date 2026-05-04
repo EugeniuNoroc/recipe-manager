@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+require_once dirname(__DIR__, 2) . '/bootstrap.php';
+
+use App\Support\Csrf;
+use App\Support\Flash;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && Csrf::verify($_POST['_token'] ?? '')) {
+    $auth->logout();
+    Flash::info('Вы вышли из системы.');
 }
 
-unset($_SESSION['chaos_admin'], $_SESSION['chaos_admin_time'], $_SESSION['chaos_flash']);
-session_regenerate_id(true);
-
-header('Location: /admin/login.php');
+header('Location: /login.php');
 exit;

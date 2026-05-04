@@ -35,7 +35,7 @@ if (!$recipe) {
     exit;
 }
 
-if ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0) {
+if (!$currentUser->isAdmin() && ($recipe->user_id !== $currentUser->id || $recipe->user_id === 0)) {
     http_response_code(403);
     Flash::error('Доступ запрещён.');
     header('Location: /index.php');

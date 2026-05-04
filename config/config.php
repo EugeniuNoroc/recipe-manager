@@ -27,9 +27,8 @@ return [
         'port' => (int) $_ENV['REDIS_PORT'],
     ],
     'app' => [
-        'env'                  => $_ENV['APP_ENV'] ?? 'dev',
-        'url'                  => $_ENV['APP_URL'] ?? '',
-        'cookie_secure'        => filter_var($_ENV['COOKIE_SECURE'] ?? 'false', FILTER_VALIDATE_BOOLEAN),
-        'chaos_admin_password' => $_ENV['CHAOS_ADMIN_PASSWORD'] ?? '',
+        'env'           => $_ENV['APP_ENV'] ?? 'dev',
+        'url'           => $_ENV['APP_URL'] ?? '',
+        'cookie_secure' => filter_var($_ENV['COOKIE_SECURE'] ?? 'false', FILTER_VALIDATE_BOOLEAN),
     ],
 ];

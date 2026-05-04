@@ -7,24 +7,44 @@ namespace App\Support;
 use App\Database\NullRedisClient;
 use App\Database\SafeRedis;
 
+/**
+ * CSRF-защита с Redis-хранилищем и SESSION-fallback.
+ *
+ * Токен хранится в Redis (ключ csrf:{session_id}) с TTL 1 час.
+ * При недоступном Redis автоматически деградирует до $_SESSION['csrf_token'].
+ * Защищает все POST-формы через hidden-поле _token.
+ *
+ * @package App\Support
+ */
 class Csrf
 {
+    /** @var SafeRedis|NullRedisClient|null Инжектируемый Redis-клиент */
     private static SafeRedis|NullRedisClient|null $redis = null;
 
+    /**
+     * Инжектирует Redis-клиент (вызывается в bootstrap.php после инициализации Redis).
+     *
+     * @param SafeRedis|NullRedisClient $redis
+     */
     public static function setRedis(SafeRedis|NullRedisClient $redis): void
     {
         self::$redis = $redis;
     }
 
+    /**
+     * Возвращает текущий CSRF-токен, создавая его если необходимо.
+     *
+     * Приоритет хранилища: Redis → $_SESSION (при недоступном Redis).
+     *
+     * @return string Hex-строка токена (64 символа)
+     */
     public static function token(): string
     {
-        // Check runtime availability — SafeRedis tracks whether the connection is live.
         $alive = (self::$redis instanceof SafeRedis) && self::$redis->isAvailable();
 
         if ($alive) {
             $key   = 'csrf:' . session_id();
             $token = self::$redis->get($key);
-            // Re-check after the get() call: SafeRedis may have just lost the connection.
             if (self::$redis->isAvailable()) {
                 if ($token === null || $token === '') {
                     $token = bin2hex(random_bytes(32));
@@ -32,22 +52,33 @@ class Csrf
                 }
                 return (string) $token;
             }
-            // Redis died mid-call — fall through to SESSION
         }
 
-        // Fallback: store in $_SESSION when Redis is down
         if (empty($_SESSION['csrf_token'])) {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
         return $_SESSION['csrf_token'];
     }
 
+    /**
+     * Верифицирует CSRF-токен из POST-запроса.
+     *
+     * Использует hash_equals для защиты от timing-атак.
+     *
+     * @param  string $token Токен из $_POST['_token']
+     * @return bool          true если токен корректен
+     */
     public static function verify(string $token): bool
     {
         $expected = self::token();
         return $expected !== '' && hash_equals($expected, $token);
     }
 
+    /**
+     * Генерирует HTML hidden-поле с CSRF-токеном.
+     *
+     * @return string HTML: <input type="hidden" name="_token" value="...">
+     */
     public static function field(): string
     {
         return '<input type="hidden" name="_token" value="'

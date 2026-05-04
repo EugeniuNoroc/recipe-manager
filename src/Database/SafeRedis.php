@@ -10,26 +10,51 @@ use Predis\Connection\ConnectionException;
 use Predis\CommunicationException;
 
 /**
- * Proxy around Predis\Client that catches connection/communication exceptions
- * on every call and transparently falls back to NullRedisClient behavior.
- * Marks itself unavailable after the first failure so callers can react.
- * Also degrades gracefully when ChaosFlags simulates a Redis outage.
+ * Прокси вокруг Predis\Client с graceful degradation (паттерн Proxy).
+ *
+ * Перехватывает исключения соединения/коммуникации при каждом вызове
+ * и прозрачно деградирует до поведения NullRedisClient.
+ * Отмечает себя недоступным после первого сбоя, чтобы вызывающий код мог реагировать.
+ * Также деградирует при симуляции сбоя через ChaosFlags.
+ *
+ * @package App\Database
  */
 class SafeRedis
 {
+    /** @var bool Флаг доступности: false после первого сбоя соединения */
     private bool $alive = true;
+
+    /** @var NullRedisClient No-op клиент для деградированного режима */
     private NullRedisClient $null;
 
+    /**
+     * @param Client $client Реальный Predis-клиент
+     */
     public function __construct(private Client $client)
     {
         $this->null = new NullRedisClient();
     }
 
+    /**
+     * Возвращает true если Redis соединение живо и ChaosFlags не имитирует сбой.
+     *
+     * @return bool
+     */
     public function isAvailable(): bool
     {
         return $this->alive && !ChaosFlags::isRedisDisabled();
     }
 
+    /**
+     * Проксирует вызов методов к реальному клиенту с перехватом ошибок.
+     *
+     * При ConnectionException или CommunicationException переходит в degraded-режим
+     * и перенаправляет все последующие вызовы к NullRedisClient.
+     *
+     * @param  string $method Имя Redis-команды (get, set, incr и т.д.)
+     * @param  array  $args   Аргументы команды
+     * @return mixed          Результат команды или null/0/[] от NullRedisClient
+     */
     public function __call(string $method, array $args): mixed
     {
         if (ChaosFlags::isRedisDisabled()) {

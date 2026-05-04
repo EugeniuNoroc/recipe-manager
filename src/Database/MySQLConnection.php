@@ -7,10 +7,29 @@ namespace App\Database;
 use App\Services\ChaosFlags;
 use PDO;
 
+/**
+ * Singleton-подключение к MySQL через PDO.
+ *
+ * Обеспечивает единственное PDO-соединение на протяжении всего HTTP-запроса.
+ * Поддерживает симуляцию сбоя через ChaosFlags (демо-режим).
+ *
+ * @package App\Database
+ */
 class MySQLConnection
 {
+    /** @var PDO|null Единственный экземпляр соединения */
     private static ?PDO $instance = null;
 
+    /**
+     * Возвращает единственный экземпляр PDO-соединения (Singleton).
+     *
+     * При первом вызове создаёт соединение с параметрами из конфига.
+     * При активном chaos-флаге MySQL выбрасывает PDOException для имитации сбоя.
+     *
+     * @param  array{host:string,port:int,database:string,user:string,password:string,charset?:string} $config
+     * @return PDO          Активное PDO-соединение
+     * @throws \PDOException При ошибке подключения или активном chaos-флаге
+     */
     public static function getInstance(array $config): PDO
     {
         if (ChaosFlags::isMysqlDisabled()) {

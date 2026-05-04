@@ -67,30 +67,34 @@ require dirname(__DIR__) . '/templates/header.php';
                         <label class="form-label">Логин</label>
                         <input type="text" name="username"
                                class="form-control <?= isset($errors['username']) ? 'is-invalid' : '' ?>"
-                               value="<?= htmlspecialchars($old['username']) ?>" required>
-                        <?php if (isset($errors['username'])): ?>
-                            <div class="invalid-feedback"><?= htmlspecialchars($errors['username']) ?></div>
-                        <?php endif; ?>
+                               value="<?= htmlspecialchars($old['username']) ?>"
+                               required minlength="3" maxlength="30"
+                               pattern="[a-zA-Z0-9_]+"
+                               title="Только буквы, цифры и _">
+                        <div class="invalid-feedback">
+                            <?= isset($errors['username']) ? htmlspecialchars($errors['username']) : 'Только буквы, цифры и _, от 3 до 30 символов' ?>
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <label class="form-label">Email</label>
                         <input type="email" name="email"
                                class="form-control <?= isset($errors['email']) ? 'is-invalid' : '' ?>"
-                               value="<?= htmlspecialchars($old['email']) ?>" required>
-                        <?php if (isset($errors['email'])): ?>
-                            <div class="invalid-feedback"><?= htmlspecialchars($errors['email']) ?></div>
-                        <?php endif; ?>
+                               value="<?= htmlspecialchars($old['email']) ?>"
+                               required>
+                        <div class="invalid-feedback">
+                            <?= isset($errors['email']) ? htmlspecialchars($errors['email']) : 'Введите корректный email-адрес' ?>
+                        </div>
                     </div>
 
                     <div class="mb-4">
                         <label class="form-label">Пароль</label>
                         <input type="password" name="password"
                                class="form-control <?= isset($errors['password']) ? 'is-invalid' : '' ?>"
-                               required>
-                        <?php if (isset($errors['password'])): ?>
-                            <div class="invalid-feedback"><?= htmlspecialchars($errors['password']) ?></div>
-                        <?php endif; ?>
+                               required minlength="6">
+                        <div class="invalid-feedback">
+                            <?= isset($errors['password']) ? htmlspecialchars($errors['password']) : 'Минимум 6 символов' ?>
+                        </div>
                     </div>
 
                     <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>

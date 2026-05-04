@@ -7,22 +7,38 @@ namespace App\Services;
 use App\Database\NullRedisClient;
 use App\Database\SafeRedis;
 
+/**
+ * Ограничитель частоты запросов на основе Redis.
+ *
+ * Реализует скользящее окно через паттерн INCR + EXPIRE.
+ * При недоступном Redis деградирует в fail-open режим (всегда разрешает запрос).
+ *
+ * @package App\Services
+ */
 class RateLimiter
 {
+    /**
+     * @param SafeRedis|NullRedisClient $redis Redis-клиент
+     */
     public function __construct(private SafeRedis|NullRedisClient $redis) {}
 
     /**
-     * Returns true when the request is within the limit (fail-open: true when Redis is down).
-     * Uses INCR + EXPIRE sliding window pattern.
+     * Проверяет, не превышен ли лимит запросов для ключа.
+     *
+     * Возвращает true если запрос разрешён (в пределах лимита).
+     * Fail-open: при Redis = NullRedisClient INCR возвращает 0, что всегда ≤ $limit.
+     *
+     * @param  string $key       Идентификатор клиента/действия (например IP или user ID)
+     * @param  int    $limit     Максимальное количество запросов в окне
+     * @param  int    $windowSec Размер временного окна в секундах
+     * @return bool              true — запрос разрешён, false — лимит превышен
      */
     public function check(string $key, int $limit, int $windowSec): bool
     {
         $current = (int) $this->redis->incr($key);
         if ($current === 1) {
-            // First hit in this window: set expiry
             $this->redis->expire($key, $windowSec);
         }
         return $current <= $limit;
-        // With NullRedisClient incr() returns 0, so 0 <= $limit is always true → fail-open
     }
 }

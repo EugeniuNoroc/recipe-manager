@@ -69,6 +69,12 @@ foreach ($files as $file => $label) {
     }
 
     echo "[OK] {$label}.sql — {$ok} statement(s) applied.\n";
+
+    if ($label === 'schema') {
+        echo "\nApplying admin role migration...\n";
+        require __DIR__ . '/add_admin_role.php';
+        echo "\n";
+    }
 }
 
 echo "\nMigration complete.\n";

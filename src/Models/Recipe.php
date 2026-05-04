@@ -4,23 +4,61 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+/**
+ * Модель рецепта.
+ *
+ * Представляет запись из таблицы recipes с присоединёнными данными категории и тегов.
+ * Создаётся из результатов PDO через fromArray() или заполняется вручную.
+ *
+ * @package App\Models
+ */
 class Recipe
 {
+    /** @var int Первичный ключ */
     public int    $id           = 0;
+
+    /** @var int ID владельца рецепта (FK → users.id, 0 если не привязан) */
     public int    $user_id      = 0;
+
+    /** @var string Название рецепта */
     public string $title        = '';
+
+    /** @var string Имя автора (текстовое поле, не FK) */
     public string $author       = '';
+
+    /** @var int Время приготовления в минутах */
     public int    $prep_time    = 0;
+
+    /** @var string Название категории (join из categories) */
     public string $category     = '';
+
+    /** @var int ID категории (FK → categories.id) */
     public int    $category_id  = 0;
+
+    /** @var string Сложность: 'Легко', 'Средне', 'Сложно' */
     public string $difficulty   = '';
+
+    /** @var string Список ингредиентов */
     public string $ingredients  = '';
+
+    /** @var string Пошаговые инструкции */
     public string $instructions = '';
+
+    /** @var string Дата создания (Y-m-d) */
     public string $created_at   = '';
+
+    /** @var string Дата последнего обновления (TIMESTAMP) */
     public string $updated_at   = '';
-    /** @var string[] */
+
+    /** @var string[] Список тегов (join из tags через recipe_tags) */
     public array  $tags         = [];
 
+    /**
+     * Создаёт экземпляр из ассоциативного массива (результат PDO::fetch).
+     *
+     * @param  array $data Массив данных из БД (включая join-поля)
+     * @return self
+     */
     public static function fromArray(array $data): self
     {
         $r               = new self();
@@ -40,6 +78,11 @@ class Recipe
         return $r;
     }
 
+    /**
+     * Возвращает все поля рецепта в виде массива.
+     *
+     * @return array<string,mixed>
+     */
     public function toArray(): array
     {
         return [
