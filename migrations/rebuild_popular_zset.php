@@ -33,10 +33,13 @@ try {
     exit(1);
 }
 
+$redis->del(['popular:recipes']);
+echo "ZSET popular:recipes очищен.\n";
+
 $keys = $redis->keys('recipe:*:views');
 
 if (empty($keys)) {
-    echo "No recipe:*:views keys found. Restored 0 keys.\n";
+    echo "Ключи recipe:*:views не найдены. Восстановлено 0 записей.\n";
     exit(0);
 }
 
@@ -53,7 +56,6 @@ foreach ($keys as $key) {
         continue;
     }
 
-    // ZADD popular:recipes <score> <member>
     $redis->zadd('popular:recipes', [$id => $views]);
     echo "  zadd popular:recipes {$views} {$id}\n";
     $restored++;

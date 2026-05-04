@@ -25,11 +25,15 @@ class StatsService
     /**
      * Инкрементирует счётчик просмотров рецепта.
      *
+     * Обновляет два ключа: строковый счётчик recipe:{id}:views
+     * и sorted set popular:recipes для быстрой выборки топа без KEYS.
+     *
      * @param int $recipeId ID рецепта
      */
     public function incrementView(int $recipeId): void
     {
         $this->redis->incr("recipe:{$recipeId}:views");
+        $this->redis->zincrby('popular:recipes', 1, (string) $recipeId);
     }
 
     /**

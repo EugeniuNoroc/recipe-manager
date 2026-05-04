@@ -1,61 +1,74 @@
-# Recipe Manager
+# 🍽 Recipe Manager
 
 Веб-приложение для управления рецептами на PHP с MySQL и Redis.  
-Лабораторная работа №8 / Курсовой проект по PHP и веб-разработке.
+Реализовано в рамках лабораторной работы №8 и курсового проекта.
 
-**Демо:** http://178.104.227.19:8080 (если развёрнуто)  
-**Стек:** PHP 8.x · MySQL 8 · Redis 7 · Bootstrap 5.3 · Composer
+![PHP](https://img.shields.io/badge/PHP-8.x-777BB4?logo=php)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis)
+![Bootstrap](https://img.shields.io/badge/Bootstrap-5-7952B3?logo=bootstrap)
 
 ---
 
 ## Содержание
 
-- [Описание](#описание)
+- [Описание проекта](#описание-проекта)
+- [Стек технологий](#стек-технологий)
 - [Функциональность](#функциональность)
 - [Роли пользователей](#роли-пользователей)
 - [Сценарии взаимодействия](#сценарии-взаимодействия)
-- [Структура БД](#структура-бд)
-- [Запуск](#запуск)
+- [Структура базы данных](#структура-базы-данных)
+- [Схема Redis](#схема-redis)
 - [Архитектура](#архитектура)
 - [Безопасность](#безопасность)
-- [PHPDoc](#phpdoc)
-- [Контрольные вопросы](#контрольные-вопросы)
+- [Запуск проекта](#запуск-проекта)
+- [Скриншоты](#скриншоты)
+- [Ответы на контрольные вопросы](#ответы-на-контрольные-вопросы)
 - [Источники](#источники)
 
 ---
 
-## Описание
+## Описание проекта
 
-Recipe Manager — многоуровневое веб-приложение для хранения, поиска и управления кулинарными рецептами. Реализовано на чистом PHP 8 без фреймворков с применением принципов слоистой архитектуры и классических паттернов проектирования (Singleton, Proxy, Null Object, Repository, Guard, PRG).
+Recipe Manager — многоуровневое веб-приложение для хранения, поиска и управления кулинарными рецептами, реализованное на чистом PHP 8 без фреймворков с применением двух хранилищ данных: MySQL для реляционных данных (рецепты, пользователи, категории, теги) и Redis для эфемерных данных (сессии, счётчики просмотров, избранное, rate limiting). Приложение демонстрирует концепцию Chaos Engineering — администратор может отключить Redis или MySQL через feature-flag панель и наблюдать graceful degradation: при отключённом Redis приложение продолжает работать через `NullRedisClient`, при отключённом MySQL выводится страница обслуживания (HTTP 503). Первый зарегистрированный пользователь автоматически получает роль `admin`.
 
-Приложение демонстрирует:
-- работу с **реляционной СУБД** (MySQL 8, PDO, транзакции, prepared statements, индексы);
-- работу с **нереляционным хранилищем** (Redis 7: строки, множества, sorted sets, TTL);
-- **отказоустойчивость** через Chaos Engineering Panel — симуляцию сбоев и graceful degradation;
-- **безопасность** — bcrypt, CSRF, HttpOnly-cookie, rate limiting, XSS-защита;
-- **три роли пользователей** с разными уровнями доступа (гость, пользователь, администратор).
+---
 
-Первый зарегистрированный пользователь автоматически получает роль `admin`. Учётная запись по умолчанию после seed: `admin@recipe.local` / `admin123`.
+## Стек технологий
+
+| Технология | Версия | Назначение |
+|---|---|---|
+| PHP | 8.x | Серверная логика, встроенный веб-сервер |
+| MySQL | 8 | Реляционное хранилище: пользователи, рецепты, категории, теги |
+| Redis | 7 | Сессии, счётчики просмотров, избранное, CSRF-токены, rate limiting |
+| Predis | 2.x | PHP-клиент для взаимодействия с Redis |
+| vlucas/phpdotenv | 5.x | Загрузка переменных окружения из `.env` |
+| Bootstrap | 5.3 | UI-фреймворк, адаптивная вёрстка, валидация форм |
+| Composer | 2.x | Управление PHP-зависимостями и автозагрузка PSR-4 |
 
 ---
 
 ## Функциональность
 
-1. **Регистрация и аутентификация** — bcrypt-хэширование паролей (cost 12), Redis-сессии (токен в httpOnly cookie с TTL 24 ч), блокировка аккаунтов администратором. *(MySQL + Redis)*
+### Для пользователей
 
-2. **CRUD рецептов** — создание, просмотр, редактирование и удаление рецептов. Автор или администратор могут редактировать/удалять. Поля: название, ингредиенты, инструкции, время, сложность, категория, теги. *(MySQL)*
+1. **Регистрация и аутентификация** — регистрация с bcrypt-хэшированием пароля, вход по email/паролю, Redis-сессии в httpOnly cookie, автоматический выход при блокировке аккаунта. *(MySQL + Redis)*
+2. **CRUD рецептов** — создание, просмотр, редактирование и удаление собственных рецептов; поля: название, автор, ингредиенты, инструкции, время, сложность, категория, теги. *(MySQL)*
+3. **Категории и теги** — каждый рецепт принадлежит одной категории; поддержка тегов через связь many-to-many (`recipe_tags`), теги создаются автоматически при сохранении. *(MySQL)*
+4. **Поиск и фильтрация** — фильтрация рецептов по категории и полнотекстовый поиск по названию и ингредиентам через LIKE-запрос. *(MySQL)*
+5. **Избранное** — добавление/удаление рецептов в личный список избранного; хранится в Redis SET `user:{id}:favorites`, мгновенное обновление через POST/Redirect/GET. *(Redis)*
+6. **Статистика просмотров** — счётчик `recipe:{id}:views` инкрементируется при каждом открытии рецепта; топ-10 популярных рецептов через Redis Sorted Set `popular:recipes`. *(Redis)*
+7. **Rate limiting** — ограничение частоты запросов к формам входа и регистрации через паттерн `INCR + EXPIRE`; fail-open при недоступном Redis. *(Redis)*
 
-3. **Категории и теги** — каждый рецепт принадлежит одной категории и может иметь несколько тегов (many-to-many через `recipe_tags`). Теги создаются автоматически при сохранении рецепта. *(MySQL)*
+### Для администраторов (дополнительно)
 
-4. **Избранное** — авторизованный пользователь добавляет/убирает рецепты в избранное; список хранится в Redis-SET `user:{id}:favorites`. Работает через POST + Redirect (PRG-паттерн). *(Redis)*
-
-5. **Статистика просмотров** — счётчик `recipe:{id}:views` инкрементируется при каждом открытии рецепта. Топ-10 популярных строится через Redis ZSET (`popular:recipes`). *(Redis)*
-
-6. **Rate Limiting** — ограничение частоты запросов через паттерн `INCR + EXPIRE` в Redis. Применяется к регистрации и авторизации. Fail-open при недоступном Redis. *(Redis)*
-
-7. **Административная панель** — 7 страниц: дашборд со сводной статистикой, управление пользователями (роли, блокировка, удаление), рецептами, категориями, тегами, системной статистикой. Защищена `AdminGuard::check()`. *(MySQL + Redis)*
-
-8. **Chaos Engineering Panel** — симуляция сбоев MySQL и Redis для демонстрации отказоустойчивости. Флаги хранятся в `storage/chaos.json` с file-lock. При отключённом Redis `SafeRedis` деградирует к `NullRedisClient`, при отключённом MySQL — выводится страница обслуживания с кодом 503. *(файловое хранилище)*
+1. **Дашборд** — сводная статистика: кол-во пользователей, рецептов, категорий, тегов, активных Redis-сессий.
+2. **Управление пользователями** — просмотр всех аккаунтов, изменение роли (user ↔ admin), блокировка/разблокировка, удаление (с защитой от удаления себя и последнего администратора), создание нового пользователя из панели.
+3. **Управление рецептами** — просмотр всех рецептов системы, редактирование и удаление любого рецепта независимо от автора, фильтрация по автору и категории.
+4. **Категории CRUD** — создание, переименование (inline-форма), удаление категории (запрещено если есть рецепты).
+5. **Теги CRUD** — создание, переименование, удаление тега с каскадным удалением связей в `recipe_tags`.
+6. **Системная статистика** — топ-10 авторов по количеству рецептов (MySQL GROUP BY), топ-10 по просмотрам (Redis), распределение рецептов по категориям с прогресс-барами, список всех Redis-ключей с типами.
+7. **Chaos Engineering Panel** — симуляция отключения Redis и MySQL через feature flags (`storage/chaos.json`); демонстрация graceful degradation и страницы обслуживания HTTP 503.
 
 ---
 
@@ -65,7 +78,7 @@ Recipe Manager — многоуровневое веб-приложение дл
 |---|:---:|:---:|:---:|
 | Просмотр списка рецептов | ✅ | ✅ | ✅ |
 | Просмотр страницы рецепта | ✅ | ✅ | ✅ |
-| Фильтрация по категории / поиск | ✅ | ✅ | ✅ |
+| Поиск и фильтрация по категории | ✅ | ✅ | ✅ |
 | Регистрация / вход | ✅ | — | — |
 | Создание рецепта | ❌ | ✅ | ✅ |
 | Редактирование своего рецепта | ❌ | ✅ | ✅ |
@@ -77,179 +90,242 @@ Recipe Manager — многоуровневое веб-приложение дл
 | Доступ к административной панели | ❌ | ❌ | ✅ |
 | Управление пользователями (роли, блокировка) | ❌ | ❌ | ✅ |
 | Управление категориями и тегами | ❌ | ❌ | ✅ |
-| Просмотр системной статистики (Redis-ключи, топы) | ❌ | ❌ | ✅ |
+| Просмотр системной статистики Redis | ❌ | ❌ | ✅ |
 | Включение / выключение Chaos-режима | ❌ | ❌ | ✅ |
 
 ---
 
 ## Сценарии взаимодействия
 
-### Сценарий 1: Обычный пользователь
+### Сценарий 1 — Обычный пользователь
 
-1. Открывает `/register.php`, заполняет форму (логин, email, пароль ≥ 6 символов). Браузер валидирует поля HTML5 до отправки.
-2. После регистрации перенаправляется на главную `/index.php` — видит список рецептов с фильтрацией по категории и строкой поиска.
-3. Нажимает «Создать рецепт», заполняет все обязательные поля, выбирает категорию и теги, нажимает «Сохранить».
-4. Открывает свой рецепт, нажимает «Редактировать», исправляет ингредиенты, сохраняет.
-5. На странице любого рецепта нажимает «⭐ В избранное» — ID рецепта добавляется в Redis-SET `user:{id}:favorites`.
-6. Переходит в «Избранное» — видит только свои рецепты из Redis-SET.
-7. Открывает «Топ рецептов» (`/stats.php`) — видит топ-10 по просмотрам из Redis ZSET.
+1. Открывает `/register.php`, вводит логин (только латиница/цифры/`_`), email и пароль ≥ 6 символов. Браузер проверяет поля через HTML5-атрибуты (`required`, `pattern`, `minlength`) до отправки.
+2. После успешной регистрации перенаправляется на главную страницу `/index.php` — видит список рецептов с выпадающим фильтром по категории и строкой поиска.
+3. Нажимает «+ Создать», заполняет форму рецепта: выбирает категорию из списка, отмечает теги, вводит ингредиенты и пошаговые инструкции.
+4. На странице любого рецепта нажимает «⭐ В избранное» — ID рецепта добавляется в Redis SET `user:{id}:favorites`.
+5. Переходит в «♥ Избранное» — видит отфильтрованный список из Redis.
+6. Открывает «Статистика» (`/stats.php`) — видит топ-10 рецептов по просмотрам из Redis Sorted Set.
+7. Нажимает выход — Redis-ключ сессии удаляется, cookie очищается.
 
-### Сценарий 2: Администратор
+### Сценарий 2 — Администратор
 
-1. Входит через `/login.php` под учётной записью `admin@recipe.local` / `admin123`.
-2. В навигационной панели появляется ссылка «⚙️ Админ-панель», переходит на `/admin/index.php` — видит 4 карточки со сводной статистикой.
-3. Переходит в «Пользователи» — видит таблицу всех пользователей с кнопками «Роль», «Блок», «Удалить». Блокирует пользователя-нарушителя — тот при следующем запросе будет автоматически разлогинен.
-4. Переходит в «Категории», создаёт новую категорию «Веганское» через форму.
-5. Переходит в «Рецепты», находит чужой рецепт без категории, нажимает «Редактировать», исправляет.
-6. Переходит в «Статистика» — видит топ-10 авторов по рецептам (MySQL), топ просмотров (Redis), распределение по категориям с прогресс-барами, все Redis-ключи с типами.
+1. Входит через `/login.php` под учётными данными `admin@recipe.local` / `admin123`.
+2. В навигационной панели появляется ссылка «⚙️ Админ-панель» — переходит на `/admin/index.php` с карточками статистики.
+3. Переходит в «Пользователи», нажимает «Создать» — заполняет форму с ролью `admin`. Новый администратор появляется в таблице.
+4. Переходит в «Категории», создаёт категорию «Здоровое питание» через форму, затем переименовывает существующую через inline-поле.
+5. Переходит в «Статистика» — видит топ авторов по рецептам (MySQL GROUP BY), распределение по категориям с прогресс-барами и все активные Redis-ключи с типами.
+6. Переходит в «Рецепты» — фильтрует по категории, находит чужой рецепт без описания, нажимает «Редактировать» и исправляет его.
 
-### Сценарий 3: Демонстрация отказоустойчивости (Chaos Engineering)
+### Сценарий 3 — Демонстрация отказоустойчивости
 
-1. Администратор входит в систему, переходит в `/admin/chaos.php`.
-2. Включает «🔴 Отключить Redis» — флаг записывается в `storage/chaos.json` с file-lock.
-3. Переходит на главную: избранное и счётчики просмотров не работают, но страница загружается — `SafeRedis` деградирует до `NullRedisClient` (graceful degradation).
-4. Включает «🔴 Отключить MySQL» — при следующем запросе отображается страница обслуживания `templates/maintenance.php` с кодом 503.
-5. Выключает оба флага через Chaos Panel — приложение полностью восстанавливается без перезапуска.
-6. Запускает `php migrations/rebuild_popular_zset.php` для восстановления ZSET популярных рецептов из счётчиков просмотров.
+1. Администратор переходит на `/admin/chaos.php` (Chaos Engineering Panel).
+2. Нажимает **«🔴 Отключить Redis»** — флаг `redis_disabled: true` записывается в `storage/chaos.json` через file-lock. Redis не останавливается физически — используется feature flag, который проверяется в `SafeRedis.__call()` перед каждым вызовом.
+3. На главной странице появляется красный баннер «⚠️ DEMO MODE: Redis отключён» (автообновление каждые 10 сек). Избранное и счётчики просмотров недоступны, но страница полностью загружается — `SafeRedis` деградирует до `NullRedisClient`, все Redis-вызовы возвращают безопасные значения-заглушки.
+4. Возвращается в Chaos Panel, нажимает **«✅ Включить обратно»** — флаг сбрасывается. При следующем запросе SafeRedis снова использует реальный Predis-клиент, баннер исчезает.
+5. Аналогично демонстрируется отключение MySQL: весь сайт переходит в режим обслуживания (`templates/maintenance.php`, HTTP 503) и восстанавливается без перезапуска сервера.
 
 ---
 
-## Структура БД
+## Структура базы данных
 
-### Таблицы MySQL
-
-#### `users`
+### Таблица `users`
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | INT UNSIGNED PK AUTO_INCREMENT | Первичный ключ |
-| `username` | VARCHAR(50) UNIQUE NOT NULL | Уникальный логин |
-| `email` | VARCHAR(255) UNIQUE NOT NULL | Email-адрес |
-| `password` | VARCHAR(255) NOT NULL | Bcrypt-хэш пароля |
-| `role` | ENUM('user','admin') DEFAULT 'user' | Роль пользователя |
-| `is_blocked` | TINYINT(1) DEFAULT 0 | Флаг блокировки |
+| `id` | INT UNSIGNED PK AUTO_INCREMENT | Уникальный идентификатор |
+| `username` | VARCHAR(50) UNIQUE NOT NULL | Логин пользователя |
+| `email` | VARCHAR(255) UNIQUE NOT NULL | Электронная почта |
+| `password` | VARCHAR(255) NOT NULL | Хэш пароля (bcrypt, cost 12) |
+| `role` | ENUM('user','admin') DEFAULT 'user' | Роль в системе |
+| `is_blocked` | TINYINT(1) DEFAULT 0 | Флаг блокировки аккаунта |
 | `created_at` | TIMESTAMP DEFAULT CURRENT_TIMESTAMP | Дата регистрации |
 
-#### `categories`
+### Таблица `categories`
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | INT UNSIGNED PK AUTO_INCREMENT | Первичный ключ |
+| `id` | INT UNSIGNED PK AUTO_INCREMENT | Уникальный идентификатор |
 | `name` | VARCHAR(100) UNIQUE NOT NULL | Название категории |
 
-#### `tags`
+### Таблица `recipes`
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `id` | INT UNSIGNED PK AUTO_INCREMENT | Первичный ключ |
-| `name` | VARCHAR(100) UNIQUE NOT NULL | Название тега |
-
-#### `recipes`
-
-| Поле | Тип | Описание |
-|---|---|---|
-| `id` | INT UNSIGNED PK AUTO_INCREMENT | Первичный ключ |
-| `user_id` | INT UNSIGNED FK→users DEFAULT NULL | Владелец (NULL — без аккаунта) |
+| `id` | INT UNSIGNED PK AUTO_INCREMENT | Уникальный идентификатор |
+| `user_id` | INT UNSIGNED FK→users NULL | Владелец (NULL если без аккаунта) |
 | `title` | VARCHAR(255) NOT NULL | Название рецепта |
-| `author` | VARCHAR(100) NOT NULL | Текстовое имя автора |
-| `prep_time` | SMALLINT UNSIGNED NOT NULL | Время приготовления (мин) |
+| `author` | VARCHAR(100) NOT NULL | Имя автора (текстовое) |
+| `prep_time` | SMALLINT UNSIGNED NOT NULL | Время приготовления, минуты |
 | `category_id` | INT UNSIGNED FK→categories NOT NULL | Категория (ON DELETE RESTRICT) |
 | `difficulty` | ENUM('Легко','Средне','Сложно') | Уровень сложности |
 | `ingredients` | TEXT NOT NULL | Список ингредиентов |
 | `instructions` | TEXT NOT NULL | Пошаговые инструкции |
-| `created_at` | DATE NOT NULL | Дата создания |
-| `updated_at` | TIMESTAMP AUTO ON UPDATE | Дата последнего обновления |
+| `created_at` | DATE NOT NULL | Дата создания рецепта |
+| `updated_at` | TIMESTAMP AUTO ON UPDATE | Дата последнего изменения |
 
-**Индексы:** `idx_category (category_id)`, `idx_difficulty (difficulty)`, `idx_created (created_at)`.
+Индексы: `idx_category (category_id)`, `idx_difficulty (difficulty)`, `idx_created (created_at)`.
 
-#### `recipe_tags` (many-to-many)
+### Таблица `tags`
 
 | Поле | Тип | Описание |
 |---|---|---|
-| `recipe_id` | INT UNSIGNED FK→recipes | PK-компонент, ON DELETE CASCADE |
-| `tag_id` | INT UNSIGNED FK→tags | PK-компонент, ON DELETE CASCADE |
+| `id` | INT UNSIGNED PK AUTO_INCREMENT | Уникальный идентификатор |
+| `name` | VARCHAR(100) UNIQUE NOT NULL | Название тега |
 
-Составной первичный ключ `(recipe_id, tag_id)` исключает дублирование связей.
+### Таблица `recipe_tags` (связь many-to-many)
 
-### Ключи Redis
+| Поле | Тип | Описание |
+|---|---|---|
+| `recipe_id` | INT UNSIGNED FK→recipes | Составной PK; ON DELETE CASCADE |
+| `tag_id` | INT UNSIGNED FK→tags | Составной PK; ON DELETE CASCADE |
 
-| Паттерн ключа | Тип | TTL | Назначение |
-|---|---|---|---|
-| `session:{token}` | STRING | 86 400 с (24 ч) | User ID для аутентификации по токену |
-| `csrf:{session_id}` | STRING | 3 600 с (1 ч) | CSRF-токен для защиты форм |
-| `user:{id}:favorites` | SET | без TTL | Множество ID избранных рецептов |
-| `recipe:{id}:views` | STRING | без TTL | Счётчик просмотров рецепта |
-| `popular:recipes` | ZSET | без TTL | Sorted set: рецепты → количество просмотров |
-| `ratelimit:{action}:{ip}` | STRING | окно (сек.) | Счётчик rate limiting (INCR + EXPIRE) |
+### Связи между таблицами
+
+- `users` **1:N** `recipes` — один пользователь может иметь много рецептов
+- `categories` **1:N** `recipes` — одна категория объединяет много рецептов
+- `recipes` **M:N** `tags` — один рецепт имеет много тегов; один тег используется в многих рецептах (через `recipe_tags`)
 
 ---
 
-## Запуск
+## Схема Redis
 
-### Вариант 1: Локально с Docker
+| Ключ | Тип | Значение | TTL | Назначение |
+|---|---|---|---|---|
+| `session:{token}` | String | `user_id` | 86 400 с (24 ч) | Идентификация сессии по httpOnly cookie |
+| `csrf:{session_id}` | String | hex-токен | 3 600 с (1 ч) | CSRF-защита POST-форм |
+| `user:{id}:favorites` | Set | `{recipe_id, ...}` | — | Множество избранных рецептов пользователя |
+| `recipe:{id}:views` | String | целое число | — | Счётчик просмотров рецепта |
+| `popular:recipes` | Sorted Set | score = views | — | Топ рецептов по просмотрам (ZREVRANGE) |
+| `ratelimit:{action}:{ip}` | String | целое число | окно (сек.) | Счётчик rate limiting: INCR + EXPIRE |
 
-```bash
-# 1. Клонировать репозиторий
-git clone <repo-url> && cd lab6
+---
 
-# 2. Создать .env из примера
-cp .env.example .env
-# Отредактировать .env: задать пароли MySQL
+## Архитектура
 
-# 3. Запустить MySQL
-docker run -d --name recipe-mysql \
-  -e MYSQL_ROOT_PASSWORD=secret \
-  -e MYSQL_DATABASE=recipe_manager \
-  -e MYSQL_USER=recipe_user \
-  -e MYSQL_PASSWORD=secret \
-  -p 3307:3306 \
-  mysql:8
+```
+public/          ← Presentation: точки входа (PHP-скрипты)
+├── index.php, create.php, view.php, edit.php, delete.php
+├── login.php, register.php, logout.php, favorites.php, stats.php
+└── admin/       ← Административный раздел (7 страниц)
+    ├── index.php, users.php, recipes.php
+    ├── categories.php, tags.php, system_stats.php, chaos.php
 
-# 4. Запустить Redis
-docker run -d --name recipe-redis \
-  -p 6379:6379 \
-  redis:7-alpine
+src/             ← Application: классы, бизнес-логика
+├── Database/    ← Слой подключений к БД
+│   ├── MySQLConnection.php   — Singleton PDO-соединения
+│   ├── RedisConnection.php   — Singleton Predis-клиента
+│   ├── SafeRedis.php         — Proxy: перехват ошибок Redis
+│   └── NullRedisClient.php   — Null Object: no-op заглушка
+├── Models/      ← Доменные объекты
+│   ├── Recipe.php            — Модель рецепта
+│   └── User.php              — Модель пользователя
+├── Storage/     ← Repository: изоляция SQL
+│   ├── StorageInterface.php
+│   └── MySQLRecipeStorage.php
+├── Services/    ← Бизнес-логика
+│   ├── AuthService.php       — Регистрация, вход, сессии
+│   ├── AdminService.php      — Операции администратора
+│   ├── FavoritesService.php  — Избранное через Redis SET
+│   ├── StatsService.php      — Просмотры и топ через Redis
+│   ├── RateLimiter.php       — INCR + EXPIRE
+│   ├── SessionStore.php      — Redis-сессии
+│   └── ChaosFlags.php        — Feature flags (файловое хранилище)
+├── Validators/
+│   ├── RecipeValidator.php
+│   └── UserValidator.php
+└── Support/
+    ├── Csrf.php              — CSRF-токены (Redis + SESSION fallback)
+    ├── Flash.php             — Однократные flash-сообщения
+    ├── View.php              — Рендерер PHP-шаблонов
+    └── AdminGuard.php        — Guard: первая строка каждой admin-страницы
 
-# 5. Установить зависимости PHP
-composer install
-
-# 6. Применить схему и seed-данные
-php migrations/run.php
-
-# 7. Запустить встроенный сервер PHP
-php -S localhost:8000 -t public
-
-# Приложение доступно по адресу: http://localhost:8000
-# Учётная запись admin: admin@recipe.local / admin123
+templates/       ← Переиспользуемые шаблоны
+migrations/      ← schema.sql, seed.sql, run.php, rebuild_popular_zset.php
+config/          ← config.php (читает .env через phpdotenv)
+storage/         ← chaos.json (file-lock флаги)
 ```
 
-**Требования:** PHP 8.1+, Composer, Docker.
+**Три слоя:**
 
-### Вариант 2: На Ubuntu VPS (нативно)
+- **Presentation** (`public/`) — принимает HTTP-запросы, отображает шаблоны, не содержит бизнес-логики
+- **Application** (`src/Services`, `src/Storage`, `src/Validators`) — вся бизнес-логика, валидация, доступ к данным
+- **Data** — MySQL (источник правды, реляционные данные) + Redis (эфемерные данные, производительность)
+
+**Паттерны проектирования:**
+
+| Паттерн | Класс | Суть |
+|---|---|---|
+| Singleton | `MySQLConnection`, `RedisConnection` | Одно соединение на жизненный цикл запроса |
+| Proxy | `SafeRedis` | Перехватывает каждый Redis-вызов, деградирует к Null Object при сбое |
+| Null Object | `NullRedisClient` | Безопасные no-op ответы вместо `null`-проверок по всему коду |
+| Repository | `MySQLRecipeStorage` | Инкапсулирует все SQL-запросы, возвращает доменные объекты |
+| Feature Flag | `ChaosFlags` | Управляет симуляцией сбоев без остановки сервисов |
+| PRG | все POST-формы | Post/Redirect/Get — предотвращает двойной сабмит |
+| Guard | `AdminGuard` | Первая строка каждой admin-страницы проверяет роль |
+
+---
+
+## Безопасность
+
+- **Пароли:** `password_hash($pwd, PASSWORD_BCRYPT)` с автоматическим cost 12; проверка через `password_verify()`
+- **SQL-инъекции:** PDO prepared statements с `?`-плейсхолдерами во всех запросах; `PDO::ATTR_EMULATE_PREPARES = false` — настоящая подготовка на стороне MySQL
+- **XSS:** `htmlspecialchars()` с `ENT_QUOTES` при каждом выводе пользовательских данных в шаблонах
+- **CSRF:** скрытое поле `_token` во всех POST-формах; `Csrf::verify()` до обработки; хранится в Redis с TTL 1 ч, fallback в `$_SESSION`
+- **Сессии:** httpOnly cookie + `SameSite=Lax`; токен — `bin2hex(random_bytes(32))`; TTL 24 часа в Redis
+- **Rate limiting:** `RateLimiter::check()` через `INCR + EXPIRE` — ограничение попыток входа и регистрации; fail-open при недоступном Redis
+- **Права доступа:** редактировать/удалять рецепт может только автор (`user_id === currentUser->id`) или администратор (`isAdmin()`)
+- **Блокировка:** `is_blocked = 1` → `AuthService` принудительно разлогинивает пользователя при каждом запросе через bootstrap.php
+
+---
+
+## Запуск проекта
+
+**Требования:** PHP 8.1+, MySQL 8, Redis 7, Composer
+
+### Вариант А — локально с Docker
 
 ```bash
-# Установить зависимости ОС
-sudo apt update && sudo apt install -y \
-  php8.2 php8.2-cli php8.2-mysql php8.2-redis \
-  mysql-server redis-server composer nginx
+# Запустить MySQL и Redis
+docker run -d --name recipe-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=recipe_manager \
+  -p 3307:3306 mysql:8
 
-# Настроить MySQL
-sudo mysql -e "CREATE DATABASE recipe_manager CHARACTER SET utf8mb4;"
-sudo mysql -e "CREATE USER 'recipe'@'localhost' IDENTIFIED BY 'ваш_пароль';"
-sudo mysql -e "GRANT ALL ON recipe_manager.* TO 'recipe'@'localhost';"
+docker run -d --name recipe-redis \
+  -p 6379:6379 redis:alpine
 
-# Настроить проект
-git clone <repo-url> /var/www/recipe && cd /var/www/recipe
-cp .env.example .env && nano .env   # задать DB credentials
-composer install --no-dev --optimize-autoloader
+# Установить зависимости
+composer install
+
+# Настроить окружение
+cp .env.example .env
+# Отредактировать .env (MYSQL_PORT=3307, пароли)
+
+# Применить миграции и seed-данные
 php migrations/run.php
 
-# Права на storage/
-chmod 775 storage/ && chown www-data:www-data storage/
+# Запустить встроенный сервер PHP
+php -S localhost:8000 -t public
+```
 
-# Настроить Nginx (document root → /var/www/recipe/public)
-# Запустить php-fpm и nginx
-sudo systemctl restart php8.2-fpm nginx
+Открыть: **http://localhost:8000**  
+Войти как администратор: `admin@recipe.local` / `admin123`
+
+### Вариант Б — на Ubuntu VPS (нативно)
+
+```bash
+apt install php8.3-cli php8.3-mysql php8.3-mbstring redis-server mysql-server
+
+# Создать БД
+mysql -u root -e "CREATE DATABASE recipe_manager CHARACTER SET utf8mb4;"
+mysql -u root -e "CREATE USER 'recipe'@'localhost' IDENTIFIED BY 'пароль';"
+mysql -u root -e "GRANT ALL ON recipe_manager.* TO 'recipe'@'localhost';"
+
+# Развернуть приложение
+composer install
+cp .env.example .env && nano .env
+php migrations/run.php
+php -S 0.0.0.0:8080 -t public
 ```
 
 ### Переменные окружения (`.env`)
@@ -258,8 +334,8 @@ sudo systemctl restart php8.2-fpm nginx
 MYSQL_HOST=127.0.0.1
 MYSQL_PORT=3307
 MYSQL_DATABASE=recipe_manager
-MYSQL_USER=recipe_user
-MYSQL_PASSWORD=secret
+MYSQL_USER=root
+MYSQL_PASSWORD=root
 
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
@@ -269,104 +345,43 @@ APP_URL=http://localhost:8000
 COOKIE_SECURE=false
 ```
 
----
-
-## Архитектура
-
-```
-public/          ← точки входа (PHP-скрипты, не классы)
-├── index.php, create.php, view.php, edit.php, delete.php, ...
-└── admin/       ← административный раздел (7 страниц)
-
-src/
-├── Database/    ← подключения к БД
-│   ├── MySQLConnection.php   (паттерн Singleton)
-│   ├── RedisConnection.php   (паттерн Singleton)
-│   ├── SafeRedis.php         (паттерн Proxy + graceful degradation)
-│   └── NullRedisClient.php   (паттерн Null Object)
-├── Models/      ← доменные объекты
-│   ├── Recipe.php
-│   └── User.php
-├── Storage/     ← слой доступа к данным
-│   ├── StorageInterface.php
-│   └── MySQLRecipeStorage.php  (паттерн Repository)
-├── Services/    ← бизнес-логика
-│   ├── AuthService.php
-│   ├── AdminService.php
-│   ├── FavoritesService.php
-│   ├── StatsService.php
-│   ├── RateLimiter.php
-│   ├── SessionStore.php
-│   └── ChaosFlags.php
-├── Validators/
-│   ├── RecipeValidator.php
-│   └── UserValidator.php
-└── Support/
-    ├── Csrf.php
-    ├── Flash.php
-    ├── View.php
-    └── AdminGuard.php  (паттерн Guard)
-
-templates/       ← переиспользуемые шаблоны (header, footer, layout)
-migrations/      ← schema.sql, seed.sql, run.php, служебные скрипты
-config/          ← config.php (читает переменные из .env)
-storage/         ← chaos.json (файловые флаги, file-lock)
-```
-
-**Слои:** Presentation (`public/`) → Application (`src/Services`, `src/Storage`) → Data (`MySQL` + `Redis`).
-
-**Паттерны проектирования:**
-
-| Паттерн | Класс | Назначение |
-|---|---|---|
-| Singleton | `MySQLConnection`, `RedisConnection` | Одно соединение на жизненный цикл запроса |
-| Proxy | `SafeRedis` | Перехват исключений Redis, деградация к Null Object |
-| Null Object | `NullRedisClient` | Безопасные no-op команды при недоступном Redis |
-| Repository | `MySQLRecipeStorage` | Изолирует SQL-запросы от бизнес-логики |
-| Guard | `AdminGuard` | Первая строка каждой admin-страницы — проверка роли |
-| PRG | все POST-формы | Post-Redirect-Get предотвращает двойной сабмит |
+> **Примечание:** для активации Chaos Engineering Panel установите `APP_ENV=demo`.
 
 ---
 
-## Безопасность
+## Скриншоты
 
-| Мера | Реализация |
-|---|---|
-| Хэширование паролей | `password_hash($pwd, PASSWORD_BCRYPT)` — bcrypt, cost 12 |
-| Защита от SQL-инъекций | PDO prepared statements с `?`-плейсхолдерами во всех запросах |
-| CSRF-защита | Скрытое поле `_token`, проверка `Csrf::verify()` на каждый POST |
-| Защита сессий | httpOnly + SameSite=Lax cookie, токен в Redis с TTL 24 ч |
-| Rate Limiting | `RateLimiter::check()` через Redis INCR + EXPIRE |
-| XSS-защита | `htmlspecialchars()` во всех шаблонах при выводе пользовательских данных |
-| Проверка прав | Только автор или admin могут редактировать/удалять рецепт |
-| Блокировка пользователей | `is_blocked = 1` → принудительный logout при каждом запросе |
-| Клиентская валидация | HTML5-атрибуты (`required`, `minlength`, `pattern`) + Bootstrap |
-| Скрытие чувствительных данных | Поле `password` не возвращается в `User::toArray()` |
+### Главная страница
 
----
+![Главная страница](screenshots/index.png)
 
-## PHPDoc
+*Список рецептов с фильтрацией по категориям и полнотекстовым поиском*
 
-Все классы в `src/` документированы по стандарту PHPDoc:
+### Административная панель
 
-- **Классы:** `@package`, описание паттерна и назначения
-- **Методы:** `@param`, `@return`, `@throws` где применимо
-- **Свойства:** `@var` с типом и описанием
+![Панель администратора](screenshots/admin.png)
 
-Проверка количества аннотаций:
+*Управление пользователями, рецептами, категориями и тегами*
 
-```bash
-grep -r "@param\|@return\|@throws" src/ | wc -l
-# Результат: 191  (требование: > 100 ✅)
-```
+### Chaos Engineering Panel
+
+![Chaos Panel](screenshots/chaos.png)
+
+*Симуляция отказов Redis и MySQL для демонстрации graceful degradation*
+
+### Статистика просмотров
+
+![Статистика](screenshots/stats.png)
+
+*Топ-10 рецептов по просмотрам из Redis Sorted Set*
 
 ---
 
-## Контрольные вопросы
+## Ответы на контрольные вопросы
 
 ### 1. Что такое PDO и чем отличается от `mysqli_*`?
 
-**PDO (PHP Data Objects)** — абстрактный слой доступа к базам данных, предоставляющий единый интерфейс для работы с разными СУБД (MySQL, PostgreSQL, SQLite и др.). В отличие от `mysqli_*`, который жёстко привязан только к MySQL, PDO позволяет сменить СУБД, изменив лишь строку DSN. PDO поддерживает именованные и позиционные плейсхолдеры, объектно-ориентированный интерфейс и гибкое управление режимами ошибок через `PDO::ATTR_ERRMODE`.
+**PDO (PHP Data Objects)** — абстрактный слой доступа к базам данных, предоставляющий единый интерфейс для работы с 12+ СУБД (MySQL, PostgreSQL, SQLite, MSSQL и др.). В отличие от `mysqli_*`, который жёстко привязан только к MySQL и не позволяет сменить СУБД без переписывания всего кода работы с БД, PDO достаточно изменить строку DSN. PDO поддерживает именованные параметры (`:name`) и позиционные (`?`), объектно-ориентированный интерфейс, гибкое управление режимом ошибок через `PDO::ATTR_ERRMODE`. Важное отличие — при `ERRMODE_EXCEPTION` любая ошибка SQL автоматически бросает `PDOException`, что упрощает обработку ошибок.
 
 В проекте PDO инициализируется в `MySQLConnection::getInstance()`:
 
@@ -374,73 +389,74 @@ grep -r "@param\|@return\|@throws" src/ | wc -l
 $pdo = new PDO($dsn, $user, $password, [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
+    PDO::ATTR_EMULATE_PREPARES   => false,  // настоящая подготовка на стороне MySQL
 ]);
 ```
 
-Отключение `EMULATE_PREPARES` заставляет MySQL выполнять настоящую подготовку запросов на стороне сервера — это повышает безопасность и точность типов данных.
+Отключение `EMULATE_PREPARES` заставляет MySQL выполнять подготовку запроса на стороне сервера, что исключает любую возможность SQL-инъекции на уровне протокола.
 
 ---
 
 ### 2. Что такое подготовленные выражения?
 
-**Подготовленное выражение (prepared statement)** — запрос с параметрами-плейсхолдерами, который компилируется СУБД один раз, а затем выполняется многократно с разными значениями. Параметры передаются отдельно от SQL-кода, что исключает SQL-инъекции: пользовательский ввод никогда не интерпретируется как часть запроса.
+**Подготовленное выражение (prepared statement)** — запрос с параметрами-плейсхолдерами (`?` или `:name`), который компилируется СУБД один раз, а затем выполняется многократно с разными значениями. Ключевое свойство: параметры передаются отдельно от SQL-кода через бинарный протокол, поэтому пользовательский ввод никогда не интерпретируется как часть SQL-запроса — SQL-инъекция становится невозможной на уровне протокола.
 
-В проекте все операции с данными пользователя используют prepared statements:
+В проекте все операции с пользовательскими данными используют prepared statements. Пример из `MySQLRecipeStorage`:
 
 ```php
-// AuthService::login() — поиск пользователя по email
-$stmt = $this->pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
-$stmt->execute([$email]);
+// Поиск рецепта по ID
+$stmt = $pdo->prepare(
+    self::BASE_SELECT . ' WHERE r.id = ? GROUP BY r.id'
+);
+$stmt->execute([$id]);
 $row = $stmt->fetch();
 ```
 
-Значение `$email` передаётся как связанный параметр и никогда не конкатенируется в строку SQL, что гарантирует защиту от инъекций.
+Значение `$id` передаётся как связанный параметр и никогда не конкатенируется в строку запроса, что гарантирует безопасность независимо от его содержимого.
 
 ---
 
 ### 3. Что такое транзакция и когда её использовать?
 
-**Транзакция** — атомарная последовательность операций с базой данных: либо все они выполняются успешно (COMMIT), либо все откатываются (ROLLBACK). Применяется при изменении нескольких связанных таблиц, когда частичное выполнение оставило бы данные в несогласованном состоянии (ACID-гарантии).
+**Транзакция** — атомарная последовательность операций с базой данных: либо все они выполняются успешно (`COMMIT`), либо все откатываются к исходному состоянию (`ROLLBACK`). Транзакции обеспечивают ACID-свойства: атомарность, согласованность, изолированность и долговечность. Применяются когда несколько связанных таблиц должны обновляться как единое целое — частичное выполнение оставило бы данные в несогласованном состоянии.
 
-Классический кейс в проекте — сохранение рецепта в `MySQLRecipeStorage::save()`: сначала `INSERT` в `recipes`, затем `DELETE + INSERT` в `recipe_tags`. Если вставка тегов завершится ошибкой, рецепт без тегов останется в БД. Транзакция решает это:
+Классический пример в проекте — сохранение рецепта в `MySQLRecipeStorage::save()`: сначала `INSERT` в таблицу `recipes`, затем `DELETE + INSERT` в `recipe_tags`. Если вставка тегов упадёт с ошибкой, рецепт без тегов останется в БД. Транзакция исключает эту ситуацию:
 
 ```php
 $this->pdo->beginTransaction();
 try {
     $this->pdo->prepare('INSERT INTO recipes ...')->execute([...]);
     $recipeId = (int) $this->pdo->lastInsertId();
-    $this->syncTags($recipeId, $recipe->tags);
+    $this->syncTags($recipeId, $recipe->tags);  // может бросить PDOException
     $this->pdo->commit();
 } catch (\PDOException $e) {
-    $this->pdo->rollBack();
+    $this->pdo->rollBack();  // откатывает и INSERT в recipes
     throw $e;
 }
 ```
-
-Если `syncTags()` бросает исключение — `rollBack()` откатывает и INSERT в `recipes`, сохраняя согласованность данных.
 
 ---
 
 ### 4. Чем отличается `fetch()` от `fetchAll()`?
 
-**`fetch()`** читает одну строку результата и перемещает внутренний указатель. Используется меньше памяти: строки не загружаются в массив сразу, что важно при больших наборах данных. **`fetchAll()`** считывает все строки в массив PHP за один вызов — удобно для небольших выборок, но требует памяти пропорционально размеру результата.
+**`fetch()`** читает одну строку из курсора результата и перемещает внутренний указатель вперёд. Строки не загружаются в память сразу — это важно при работе с большими результирующими наборами. Если нужна только одна запись (поиск по ID, проверка существования), `fetch()` экономит память и не загружает лишние данные.
 
-В проекте `fetch()` применяется для поиска одной записи:
+**`fetchAll()`** считывает все строки в массив PHP за один вызов. Удобно для небольших выборок (списки категорий, теги), но при больших таблицах весь результат оказывается в памяти PHP одновременно.
+
+Использование в проекте:
 
 ```php
-// AuthService::login() — ожидаем одну строку или false
-$stmt = $this->pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
+// fetch() — ожидаем одну строку (поиск пользователя при входе)
+$stmt = $pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
 $stmt->execute([$email]);
-$row = $stmt->fetch();
-```
+$row = $stmt->fetch();  // одна строка или false
 
-`fetchAll()` — для списков рецептов:
-
-```php
-// MySQLRecipeStorage::getAll() — весь список с JOIN-ами
-$stmt = $this->pdo->query(self::BASE_SELECT . ' GROUP BY r.id ORDER BY r.updated_at DESC');
-return array_map(fn($row) => Recipe::fromArray($this->mapRow($row)), $stmt->fetchAll());
+// fetchAll() — список рецептов для отображения на главной
+$stmt = $pdo->query(self::BASE_SELECT . ' GROUP BY r.id ORDER BY r.updated_at DESC');
+return array_map(
+    fn($row) => Recipe::fromArray($this->mapRow($row)),
+    $stmt->fetchAll()
+);
 ```
 
 ---
@@ -451,7 +467,7 @@ return array_map(fn($row) => Recipe::fromArray($this->mapRow($row)), $stmt->fetc
 2. **PDO Manual** — https://www.php.net/manual/en/book.pdo.php
 3. **Redis Documentation** — https://redis.io/docs
 4. **Predis — PHP Redis client** — https://github.com/predis/predis
-5. **Bootstrap 5.3** — https://getbootstrap.com/docs/5.3
-6. **OWASP SQL Injection** — https://owasp.org/www-community/attacks/SQL_Injection
+5. **Bootstrap 5.3 Documentation** — https://getbootstrap.com/docs/5.3
+6. **OWASP SQL Injection Prevention** — https://owasp.org/www-community/attacks/SQL_Injection
 7. **OWASP CSRF Prevention Cheat Sheet** — https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html
 8. **PHP-FIG PSR-4 Autoloading Standard** — https://www.php-fig.org/psr/psr-4/
