@@ -5,6 +5,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
 use App\Storage\MySQLRecipeStorage;
+use App\Support\Csrf;
 
 $storage     = new MySQLRecipeStorage($pdo);
 $currentUser = $auth->currentUser();
@@ -104,6 +105,22 @@ require dirname(__DIR__) . '/templates/header.php';
                             <?php endif; ?>
                         </div>
                     </div>
+                    <?php $isOwner = $currentUser && $currentUser->id === $r->user_id && $r->user_id !== 0; ?>
+                    <?php if ($isOwner || ($currentUser && $currentUser->isAdmin())): ?>
+                        <div class="card-footer bg-transparent border-top-0 d-flex gap-2 position-relative">
+                            <a href="/edit.php?id=<?= $r->id ?>"
+                               class="btn btn-sm btn-outline-primary">Редактировать</a>
+                            <form method="POST" action="/delete.php"
+                                  id="deleteForm-<?= $r->id ?>">
+                                <?= Csrf::field() ?>
+                                <input type="hidden" name="id" value="<?= $r->id ?>">
+                                <button type="button" class="btn btn-sm btn-outline-danger"
+                                        onclick="if(confirm('Удалить рецепт?')) document.getElementById('deleteForm-<?= $r->id ?>').submit()">
+                                    Удалить
+                                </button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endforeach; ?>
