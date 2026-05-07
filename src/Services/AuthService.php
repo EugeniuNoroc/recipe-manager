@@ -43,15 +43,17 @@ class AuthService
      */
     public function register(string $username, string $email, string $password): User
     {
+        // Хешируем пароль через bcrypt — открытый текст никогда не сохраняется в БД
         $hash = password_hash($password, PASSWORD_BCRYPT);
 
+        // Вставляем нового пользователя с ролью 'user' по умолчанию
         $stmt = $this->pdo->prepare(
             'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)'
         );
         $stmt->execute([$username, $email, $hash, 'user']);
         $newId = (int) $this->pdo->lastInsertId();
 
-        // If this is the only user in the table, promote to admin.
+        // Если это первый пользователь в системе — автоматически назначаем роль admin
         $total = (int) $this->pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
         $role  = 'user';
         if ($total === 1) {
@@ -80,12 +82,17 @@ class AuthService
      */
     public function login(string $email, string $password): ?User
     {
+        // Ищем пользователя по email через prepared statement
         $stmt = $this->pdo->prepare('SELECT * FROM users WHERE email = ? LIMIT 1');
         $stmt->execute([$email]);
         $row = $stmt->fetch();
+
+        // Проверяем существование и корректность пароля через password_verify()
         if (!$row || !password_verify($password, $row['password'])) {
             return null;
         }
+
+        // Заблокированный пользователь не может войти
         if ((bool) ($row['is_blocked'] ?? false)) {
             return null;
         }
@@ -133,17 +140,24 @@ class AuthService
      */
     public function currentUser(): ?User
     {
+        // Используем кэш на время HTTP-запроса, чтобы не ходить в Redis при каждом вызове
         if ($this->resolved !== null) {
             return $this->resolved;
         }
+
+        // Цепочка разрешения: cookie → Redis → MySQL
         $token = $_COOKIE['session_token'] ?? null;
         if (!$token) {
             return null;
         }
+
+        // Проверяем токен в Redis (ключ session:{token})
         $userId = $this->sessionStore->get($token);
         if (!$userId) {
             return null;
         }
+
+        // Загружаем пользователя из MySQL и кэшируем на запрос
         $this->resolved = $this->findById($userId);
         return $this->resolved;
     }

@@ -40,13 +40,17 @@ class Csrf
      */
     public static function token(): string
     {
+        // Проверяем доступность Redis перед попыткой получить токен
         $alive = (self::$redis instanceof SafeRedis) && self::$redis->isAvailable();
 
         if ($alive) {
+            // Ключ привязан к session_id, чтобы у каждой сессии был свой токен
             $key   = 'csrf:' . session_id();
             $token = self::$redis->get($key);
+            // Повторная проверка доступности: Redis мог упасть в процессе вызова get()
             if (self::$redis->isAvailable()) {
                 if ($token === null || $token === '') {
+                    // Генерируем криптографически стойкий токен и сохраняем с TTL 1 час
                     $token = bin2hex(random_bytes(32));
                     self::$redis->setex($key, 3600, $token);
                 }
@@ -54,6 +58,7 @@ class Csrf
             }
         }
 
+        // Деградируем на $_SESSION если Redis недоступен (Null Object или упал в процессе)
         if (empty($_SESSION['csrf_token'])) {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
@@ -71,6 +76,7 @@ class Csrf
     public static function verify(string $token): bool
     {
         $expected = self::token();
+        // hash_equals выполняет сравнение за постоянное время, исключая timing-атаки
         return $expected !== '' && hash_equals($expected, $token);
     }
 

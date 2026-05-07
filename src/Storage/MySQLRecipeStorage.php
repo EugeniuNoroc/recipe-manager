@@ -56,13 +56,17 @@ class MySQLRecipeStorage implements StorageInterface
      */
     public function getFiltered(int $categoryId = 0, string $search = ''): array
     {
+        // Динамически строим условия WHERE только для заданных фильтров
         $where  = [];
         $params = [];
 
+        // Фильтр по категории
         if ($categoryId > 0) {
             $where[]  = 'r.category_id = ?';
             $params[] = $categoryId;
         }
+
+        // Полнотекстовый поиск по названию и ингредиентам через LIKE
         if ($search !== '') {
             $like     = '%' . $search . '%';
             $where[]  = '(r.title LIKE ? OR r.ingredients LIKE ?)';
@@ -70,12 +74,14 @@ class MySQLRecipeStorage implements StorageInterface
             $params[] = $like;
         }
 
+        // Собираем итоговый SQL с опциональным WHERE
         $sql = self::BASE_SELECT;
         if ($where) {
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }
         $sql .= ' GROUP BY r.id ORDER BY r.updated_at DESC';
 
+        // Выполняем prepared statement с параметрами фильтров
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
         return array_map(fn($row) => Recipe::fromArray($this->mapRow($row)), $stmt->fetchAll());
@@ -127,8 +133,10 @@ class MySQLRecipeStorage implements StorageInterface
      */
     public function save(Recipe $recipe): bool
     {
+        // Разрешаем или создаём категорию перед вставкой рецепта
         $categoryId = $this->resolveCategoryId($recipe->category);
 
+        // Вставляем новый рецепт; user_id может быть null для анонимных рецептов
         $stmt = $this->pdo->prepare(
             'INSERT INTO recipes
                 (user_id, title, author, prep_time, category_id, difficulty,
@@ -142,7 +150,9 @@ class MySQLRecipeStorage implements StorageInterface
             $recipe->ingredients, $recipe->instructions,
             $recipe->created_at ?: date('Y-m-d'),
         ]);
+        // Сохраняем присвоенный ID обратно в объект для дальнейшего использования
         $recipe->id = (int) $this->pdo->lastInsertId();
+        // Синхронизируем теги после получения ID нового рецепта
         $this->syncTags($recipe->id, $recipe->tags);
         return true;
     }
@@ -155,8 +165,10 @@ class MySQLRecipeStorage implements StorageInterface
      */
     public function update(Recipe $recipe): bool
     {
+        // Разрешаем категорию (создаёт новую если не существует)
         $categoryId = $this->resolveCategoryId($recipe->category);
 
+        // Обновляем все поля рецепта, updated_at проставляется автоматически через NOW()
         $stmt = $this->pdo->prepare(
             'UPDATE recipes
              SET title=?, author=?, prep_time=?, category_id=?, difficulty=?,
@@ -169,6 +181,7 @@ class MySQLRecipeStorage implements StorageInterface
             $recipe->ingredients, $recipe->instructions,
             $recipe->id,
         ]);
+        // Пересинхронизируем теги: старые удаляются, новые вставляются
         $this->syncTags($recipe->id, $recipe->tags);
         return true;
     }
@@ -243,12 +256,14 @@ class MySQLRecipeStorage implements StorageInterface
      */
     private function resolveCategoryId(string $name): int
     {
+        // Ищем существующую категорию по имени
         $stmt = $this->pdo->prepare('SELECT id FROM categories WHERE name = ?');
         $stmt->execute([$name]);
         $row = $stmt->fetch();
         if ($row) {
             return (int) $row['id'];
         }
+        // Категория не найдена — создаём новую на лету
         $stmt = $this->pdo->prepare('INSERT INTO categories (name) VALUES (?)');
         $stmt->execute([$name]);
         return (int) $this->pdo->lastInsertId();
@@ -264,6 +279,7 @@ class MySQLRecipeStorage implements StorageInterface
      */
     private function syncTags(int $recipeId, array $tags): void
     {
+        // Удаляем все старые связи тег↔рецепт перед повторной вставкой
         $this->pdo->prepare('DELETE FROM recipe_tags WHERE recipe_id = ?')->execute([$recipeId]);
 
         foreach ($tags as $name) {
@@ -271,6 +287,7 @@ class MySQLRecipeStorage implements StorageInterface
             if ($name === '') {
                 continue;
             }
+            // Ищем тег по имени; создаём если не существует
             $stmt = $this->pdo->prepare('SELECT id FROM tags WHERE name = ?');
             $stmt->execute([$name]);
             $row   = $stmt->fetch();
@@ -281,6 +298,7 @@ class MySQLRecipeStorage implements StorageInterface
                 $ins->execute([$name]);
                 $tagId = (int) $this->pdo->lastInsertId();
             }
+            // INSERT IGNORE предотвращает дублирование при гонке потоков
             $this->pdo->prepare('INSERT IGNORE INTO recipe_tags (recipe_id, tag_id) VALUES (?, ?)')
                 ->execute([$recipeId, $tagId]);
         }
